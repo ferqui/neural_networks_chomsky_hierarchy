@@ -20,7 +20,7 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import numpy as np
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
 class StackManipulation(task.GeneralizationTask):

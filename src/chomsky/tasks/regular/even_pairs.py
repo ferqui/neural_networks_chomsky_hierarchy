@@ -22,7 +22,7 @@ from jax import nn as jnn
 from jax import numpy as jnp
 from jax import random as jrandom
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
 class EvenPairs(task.GeneralizationTask):

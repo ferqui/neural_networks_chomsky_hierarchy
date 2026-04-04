@@ -21,22 +21,25 @@ import random
 from typing import Any, Callable, Mapping, Optional
 
 import chex
-import haiku as hk
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import tqdm
+import jax.random as jrandom
 
-from neural_networks_chomsky_hierarchy.experiments import curriculum as curriculum_lib
-from neural_networks_chomsky_hierarchy.experiments import range_evaluation
-from neural_networks_chomsky_hierarchy.tasks import task as task_lib
+from jaxtyping import PyTree
+
+from chomsky import curriculum as curriculum_lib
+import range_evaluation
+from chomsky.tasks import task as task_lib
 
 
 _LossMetrics = Optional[Mapping[str, jnp.ndarray]]
 _LossFn = Callable[[chex.Array, chex.Array], tuple[float, _LossMetrics]]
 _AccuracyFn = Callable[[chex.Array, chex.Array], float]
-_ModelApplyFn = Callable[..., chex.Array]
+_ModelApplyFn = PyTree
 _MAX_RNGS_RESERVE = 50000
 
 
@@ -44,18 +47,21 @@ _MAX_RNGS_RESERVE = 50000
 class ClassicTrainingParams:
   """Parameters needed to train classical architectures."""
   seed: int  # Used to sample during forward pass (e.g. from final logits).
-  model_init_seed: int  # Used to initialize model parameters.
   training_steps: int
   log_frequency: int
+  # max_range_train_length: int
 
   task: task_lib.GeneralizationTask
+  task_name: str
   length_curriculum: curriculum_lib.Curriculum
   batch_size: int
 
-  model: hk.Transformed
+  model: eqx.Module
+  model_name: str
+  model_architecture: str
   loss_fn: Callable[[jnp.ndarray, jnp.ndarray], tuple[float, _LossMetrics]]
+  accuracy_fn: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
   learning_rate: float
-  test_model: Optional[hk.Transformed] = None
   max_grad_norm: float = 1.
   is_autoregressive: bool = False
 
@@ -64,12 +70,9 @@ class ClassicTrainingParams:
   range_test_sub_batch_size: int = 64
   max_range_test_length: int = 100
 
-  accuracy_fn: Optional[Callable[[jnp.ndarray, jnp.ndarray],
-                                 jnp.ndarray]] = None
-
 
 def _apply_loss_and_metrics_fn(
-    params: hk.Params,
+    params: PyTree,
     rng_key: chex.PRNGKey,
     batch: task_lib.Batch,
     model_apply_fn: _ModelApplyFn,
@@ -97,11 +100,11 @@ def _apply_loss_and_metrics_fn(
     The loss of the model for the batch of data, extra loss metrics and the
     accuracy, if accuracy_fn is not None.
   """
+  model = eqx.combine(params, model_apply_fn)
   if is_autoregressive:
-    outputs = model_apply_fn(
-        params, rng_key, batch["input"], batch["output"], sample=False)
+    outputs = eqx.filter_vmap(model, in_axes=(9, 0, None))(batch["input"], batch["output"], sample=False)
   else:
-    outputs = model_apply_fn(params, rng_key, batch["input"])
+    outputs = eqx.filter_vmap(model)(batch["input"])
 
   loss, loss_metrics = loss_fn(outputs, batch["output"])
   if accuracy_fn is not None:
@@ -111,18 +114,19 @@ def _apply_loss_and_metrics_fn(
   return loss, (loss_metrics, accuracy)
 
 
-@functools.partial(
-    jax.jit,
-    static_argnames=(
-        "model_apply_fn",
-        "loss_fn",
-        "accuracy_fn",
-        "optimizer",
-        "is_autoregressive",
-    ),
-)
+# @functools.partial(
+#     jax.jit,
+#     static_argnames=(
+#         "model_apply_fn",
+#         "loss_fn",
+#         "accuracy_fn",
+#         "optimizer",
+#         "is_autoregressive",
+#     ),
+# )
+@eqx.filter_jit
 def _update_parameters(
-    params: hk.Params,
+    params: PyTree,
     rng_key: chex.PRNGKey,
     batch: task_lib.Batch,
     model_apply_fn: _ModelApplyFn,
@@ -131,7 +135,7 @@ def _update_parameters(
     optimizer: optax.GradientTransformation,
     opt_state: optax.OptState,
     is_autoregressive: bool = False,
-) -> tuple[hk.Params, optax.OptState, tuple[float, _LossMetrics, float]]:
+) -> tuple[PyTree, optax.OptState, tuple[float, _LossMetrics, float]]:
   """Applies a single SGD update step to the model parameters.
 
   Args:
@@ -152,12 +156,12 @@ def _update_parameters(
     The updated parameters, the new optimizer state, and the loss, loss metrics
     and accuracy.
   """
-  (loss, (metrics, accuracy)), grads = jax.value_and_grad(
+  (loss, (metrics, accuracy)), grads = eqx.filter_value_and_grad(
       _apply_loss_and_metrics_fn,
       has_aux=True)(params, rng_key, batch, model_apply_fn, loss_fn,
                     accuracy_fn, is_autoregressive)
   updates, new_opt_state = optimizer.update(grads, opt_state)
-  new_params = optax.apply_updates(params, updates)
+  new_params = eqx.apply_updates(params, updates)
   return new_params, new_opt_state, (loss, metrics, accuracy)
 
 
@@ -188,12 +192,10 @@ class TrainingWorker:
       and router parameters.
     """
     training_params = self._training_params
-    rngs_reserve = min(_MAX_RNGS_RESERVE, training_params.training_steps)
 
     random.seed(training_params.seed)
     np.random.seed(training_params.seed)
-    rng_seq = hk.PRNGSequence(training_params.seed)
-    rng_seq.reserve(rngs_reserve)
+    key = jrandom.key(training_params.seed)
 
     results = []
     model = training_params.model
@@ -204,18 +206,7 @@ class TrainingWorker:
         optax.clip_by_global_norm(training_params.max_grad_norm),
         optax.adam(training_params.learning_rate))
 
-    dummy_batch = task.sample_batch(
-        next(rng_seq), length=10, batch_size=training_params.batch_size)
-    model_init_rng_key = jax.random.PRNGKey(training_params.model_init_seed)
-
-    if training_params.is_autoregressive:
-      params = model.init(
-          model_init_rng_key,
-          dummy_batch["input"],
-          dummy_batch["output"],
-          sample=False)
-    else:
-      params = model.init(model_init_rng_key, dummy_batch["input"])
+    params, static = eqx.partition(model, eqx.is_array)
 
     opt_state = optimizer.init(params)
     self._params, self._step = params, 0
@@ -223,18 +214,21 @@ class TrainingWorker:
     steps = range(training_params.training_steps + 1)
     if self._use_tqdm:
       steps = tqdm.tqdm(steps)
+    
     for step in steps:
+      key, sample_key, model_key = jrandom.split(key, 3)
+
       # Randomness handled by either python.random or numpy.
       length = length_curriculum.sample_sequence_length(step)
       # Randomness handled by either jax, python.random or numpy.
       train_batch = task.sample_batch(
-          next(rng_seq), length=length, batch_size=training_params.batch_size)
+          sample_key, length=length, batch_size=training_params.batch_size)
       params, opt_state, (
           train_loss, train_metrics, train_accuracy) = _update_parameters(
               params=params,
-              rng_key=next(rng_seq),
+              rng_key=model_key,
               batch=train_batch,
-              model_apply_fn=model.apply,
+              model_apply_fn=static,
               loss_fn=training_params.loss_fn,
               accuracy_fn=training_params.accuracy_fn,
               optimizer=optimizer,
@@ -254,16 +248,10 @@ class TrainingWorker:
           log_data[".".join(["train_metrics", key])] = np.array(value)
         results.append(log_data)
 
-      # We need to access this private attribute since the default reserve size
-      # can not be edited yet.
-      if not rng_seq._subkeys:  # pylint: disable=protected-access
-        rng_seq.reserve(rngs_reserve)
-
     eval_results = None
     if training_params.compute_full_range_test:
       eval_params = range_evaluation.EvaluationParams(
-          model=training_params.test_model or model,
-          params=params,
+          model=eqx.combine(params, static),
           accuracy_fn=training_params.accuracy_fn,
           sample_batch=task.sample_batch,
           max_test_length=training_params.max_range_test_length,

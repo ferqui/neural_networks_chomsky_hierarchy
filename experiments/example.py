@@ -17,15 +17,21 @@
 
 from absl import app
 from absl import flags
-import haiku as hk
 import jax.numpy as jnp
 import numpy as np
+import jax.random as jrandom
 
-from neural_networks_chomsky_hierarchy.experiments import constants
-from neural_networks_chomsky_hierarchy.experiments import curriculum as curriculum_lib
-from neural_networks_chomsky_hierarchy.experiments import training
-from neural_networks_chomsky_hierarchy.experiments import utils
+import constants
+from chomsky import curriculum as curriculum_lib
+import training
+import utils
 
+_SEED = flags.DEFINE_integer(
+    'seed',
+    default=0,
+    help='Experiment seed.',
+    lower_bound=0,
+)
 _BATCH_SIZE = flags.DEFINE_integer(
     'batch_size',
     default=128,
@@ -45,7 +51,7 @@ _TASK = flags.DEFINE_string(
 )
 _ARCHITECTURE = flags.DEFINE_string(
     'architecture',
-    default='tape_rnn',
+    default='rnn',
     help='Model architecture (see `constants.py` for other architectures).',
 )
 
@@ -67,12 +73,16 @@ _COMPUTATION_STEPS_MULT = flags.DEFINE_integer(
 # them as via flags. See `constants.py` for the required values.
 _ARCHITECTURE_PARAMS = {
     'hidden_size': 256,
-    'memory_cell_size': 8,
-    'memory_size': 40,
+    # "input_window": 5,
+    # 'memory_cell_size': 8,
+    # 'memory_size': 40,
 }
 
 
 def main(unused_argv) -> None:
+  key = jrandom.key(_SEED.value)
+  keys = jrandom.split(key)
+
   # Create the task.
   curriculum = curriculum_lib.UniformCurriculum(
       values=list(range(1, _SEQUENCE_LENGTH.value + 1))
@@ -81,22 +91,35 @@ def main(unused_argv) -> None:
 
   # Create the model.
   single_output = task.output_length(10) == 1
+
+  is_autoregressive = _IS_AUTOREGRESSIVE.value
+  is_transformer = 'transformer' in _ARCHITECTURE.value
+  extra_dims_onehot = 1 + int(_COMPUTATION_STEPS_MULT.value > 0)
+
+  # Resolve input size based on architecture/mode combination
+  if is_autoregressive and not is_transformer:
+    input_size = max(task.input_size, task.output_size) + extra_dims_onehot
+  elif is_autoregressive:  # transformer
+    input_size = task.input_size
+  else:
+    input_size = task.input_size + extra_dims_onehot
+
   model = constants.MODEL_BUILDERS[_ARCHITECTURE.value](
-      output_size=task.output_size,
-      return_all_outputs=True,
-      **_ARCHITECTURE_PARAMS,
+    key=keys[0],
+    input_size=input_size,
+    output_size=task.output_size,
+    return_all_outputs=True,
+    **_ARCHITECTURE_PARAMS,
   )
-  if _IS_AUTOREGRESSIVE.value:
-    if 'transformer' not in _ARCHITECTURE.value:
-      model = utils.make_model_with_targets_as_input(
-          model, _COMPUTATION_STEPS_MULT.value
-      )
+  
+  if is_autoregressive:
+    if not is_transformer:
+        model = utils.make_model_with_targets_as_input(model, _COMPUTATION_STEPS_MULT.value)
     model = utils.add_sampling_to_autoregressive_model(model, single_output)
   else:
     model = utils.make_model_with_empty_targets(
         model, task, _COMPUTATION_STEPS_MULT.value, single_output
     )
-  model = hk.transform(model)
 
   # Create the loss and accuracy based on the pointwise ones.
   def loss_fn(output, target):
@@ -109,14 +132,16 @@ def main(unused_argv) -> None:
 
   # Create the final training parameters.
   training_params = training.ClassicTrainingParams(
-      seed=0,
-      model_init_seed=0,
+      seed=_SEED.value + 1,
       training_steps=10_000,
       log_frequency=100,
       length_curriculum=curriculum,
       batch_size=_BATCH_SIZE.value,
       task=task,
+      task_name=_TASK.value,
       model=model,
+      model_name="",
+      model_architecture=_ARCHITECTURE.value,
       loss_fn=loss_fn,
       learning_rate=1e-3,
       accuracy_fn=accuracy_fn,

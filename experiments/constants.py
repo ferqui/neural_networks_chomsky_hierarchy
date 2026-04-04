@@ -17,58 +17,56 @@
 
 import functools
 
-import haiku as hk
-
-from neural_networks_chomsky_hierarchy.experiments import curriculum as curriculum_lib
-from neural_networks_chomsky_hierarchy.models import ndstack_rnn
-from neural_networks_chomsky_hierarchy.models import rnn
-from neural_networks_chomsky_hierarchy.models import stack_rnn
-from neural_networks_chomsky_hierarchy.models import tape_rnn
-from neural_networks_chomsky_hierarchy.models import transformer
-from neural_networks_chomsky_hierarchy.tasks.cs import binary_addition
-from neural_networks_chomsky_hierarchy.tasks.cs import binary_multiplication
-from neural_networks_chomsky_hierarchy.tasks.cs import bucket_sort
-from neural_networks_chomsky_hierarchy.tasks.cs import compute_sqrt
-from neural_networks_chomsky_hierarchy.tasks.cs import duplicate_string
-from neural_networks_chomsky_hierarchy.tasks.cs import missing_duplicate_string
-from neural_networks_chomsky_hierarchy.tasks.cs import odds_first
-from neural_networks_chomsky_hierarchy.tasks.dcf import modular_arithmetic_brackets
-from neural_networks_chomsky_hierarchy.tasks.dcf import reverse_string
-from neural_networks_chomsky_hierarchy.tasks.dcf import solve_equation
-from neural_networks_chomsky_hierarchy.tasks.dcf import stack_manipulation
-from neural_networks_chomsky_hierarchy.tasks.regular import cycle_navigation
-from neural_networks_chomsky_hierarchy.tasks.regular import even_pairs
-from neural_networks_chomsky_hierarchy.tasks.regular import modular_arithmetic
-from neural_networks_chomsky_hierarchy.tasks.regular import parity_check
+import chomsky.curriculum as curriculum_lib
+# from chomsky.models import ndstack_rnn
+from chomsky.models import rnn
+# from chomsky.models import stack_rnn
+# from chomsky.models import tape_rnn
+# from chomsky.models import transformer
+from chomsky.tasks.cs import binary_addition
+from chomsky.tasks.cs import binary_multiplication
+from chomsky.tasks.cs import bucket_sort
+from chomsky.tasks.cs import compute_sqrt
+from chomsky.tasks.cs import duplicate_string
+from chomsky.tasks.cs import missing_duplicate_string
+from chomsky.tasks.cs import odds_first
+from chomsky.tasks.dcf import modular_arithmetic_brackets
+from chomsky.tasks.dcf import reverse_string
+from chomsky.tasks.dcf import solve_equation
+from chomsky.tasks.dcf import stack_manipulation
+from chomsky.tasks.regular import cycle_navigation
+from chomsky.tasks.regular import even_pairs
+from chomsky.tasks.regular import modular_arithmetic
+from chomsky.tasks.regular import parity_check
 
 
 MODEL_BUILDERS = {
     'rnn':
-        functools.partial(rnn.make_rnn, rnn_core=hk.VanillaRNN),
+        functools.partial(rnn.make_rnn, rnn_core=rnn.VanillaRNN),
     'lstm':
-        functools.partial(rnn.make_rnn, rnn_core=hk.LSTM),
-    'stack_rnn':
-        functools.partial(
-            rnn.make_rnn,
-            rnn_core=stack_rnn.StackRNNCore,
-            inner_core=hk.VanillaRNN),
-    'ndstack_rnn':
-        functools.partial(
-            rnn.make_rnn,
-            rnn_core=ndstack_rnn.NDStackRNNCore,
-            inner_core=hk.VanillaRNN),
-    'stack_lstm':
-        functools.partial(
-            rnn.make_rnn, rnn_core=stack_rnn.StackRNNCore, inner_core=hk.LSTM),
-    'transformer_encoder':
-        transformer.make_transformer_encoder,
-    'transformer':
-        transformer.make_transformer,
-    'tape_rnn':
-        functools.partial(
-            rnn.make_rnn,
-            rnn_core=tape_rnn.TapeInputLengthJumpCore,
-            inner_core=hk.VanillaRNN),
+        functools.partial(rnn.make_rnn, rnn_core=rnn.LSTM),
+#     'stack_rnn':
+#         functools.partial(
+#             rnn.make_rnn,
+#             rnn_core=stack_rnn.StackRNNCore,
+#             inner_core=hk.VanillaRNN),
+#     'ndstack_rnn':
+#         functools.partial(
+#             rnn.make_rnn,
+#             rnn_core=ndstack_rnn.NDStackRNNCore,
+#             inner_core=hk.VanillaRNN),
+#     'stack_lstm':
+#         functools.partial(
+#             rnn.make_rnn, rnn_core=stack_rnn.StackRNNCore, inner_core=hk.LSTM),
+#     'transformer_encoder':
+#         transformer.make_transformer_encoder,
+#     'transformer':
+#         transformer.make_transformer,
+#     'tape_rnn':
+#         functools.partial(
+#             rnn.make_rnn,
+#             rnn_core=tape_rnn.TapeInputLengthJumpCore,
+#             inner_core=hk.VanillaRNN),
 }
 
 CURRICULUM_BUILDERS = {

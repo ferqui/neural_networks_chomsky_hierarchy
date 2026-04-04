@@ -23,7 +23,7 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import numpy as np
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
 def numbers_to_variable_length_binary(

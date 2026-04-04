@@ -13,50 +13,55 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Duplicate a string."""
+"""Sort tokens from a fixed alphabet (i.e., bucket sort)."""
 
 import functools
 
+import chex
 import jax
-import jax.nn as jnn
-import jax.numpy as jnp
-import jax.random as jrandom
+from jax import nn as jnn
+from jax import numpy as jnp
+from jax import random as jrandom
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
-class DuplicateString(task.GeneralizationTask):
-  """A task with the goal of duplicating a string.
+class BucketSort(task.GeneralizationTask):
+  """A task with the goal of sorting tokens from a fixed alphabet.
 
-  The input is a string s_1 ... s_n composed of symbols from a finite set S. The
-  output is the same string outputted twice without any separator, ie:
-  s_1 ... s_n s_1 ... s_n
+  The input string is composed of tokens from a fixed-size alphabet, i.e.,
+  `{0, 1, ..., vocab_size - 1}`, and the goal is to return the sorted string (in
+  lexicographically increasing order).
 
   Examples:
-    101 -> 101 101
-    111111 -> 111111 111111
-
-  In the paper, we use only binary strings (ie S = {0, 1}).
-  Note that the sampling is jittable so this task is fast.
+    10204112  ->  00111224  (with `vocab_size = 5`)
+    1110001   ->  0001111   (with `vocab_size = 2`)
   """
 
-  def __init__(self, vocab_size: int = 2) -> None:
-    """Initializes the remember_string task.
+  def __init__(self, vocab_size: int = 5) -> None:
+    """Initializes the task.
 
     Args:
-      vocab_size: The size of the alphabet. We use 2 in the paper.
+      vocab_size: The size of the alphabet. We use 5 in the paper.
     """
     self._vocab_size = vocab_size
 
   @functools.partial(jax.jit, static_argnums=(0, 2, 3))
-  def sample_batch(self, rng: jnp.ndarray, batch_size: int,
-                   length: int) -> task.Batch:
-    """Returns a batch of strings and their copies."""
+  def sample_batch(
+      self,
+      rng: chex.PRNGKey,
+      batch_size: int,
+      length: int,
+  ) -> task.Batch:
+    """Returns a batch of strings and tokens sorted by (inc.) occurrence."""
     strings = jrandom.randint(
         rng, shape=(batch_size, length), minval=0, maxval=self._vocab_size)
-    one_hot_strings = jnn.one_hot(strings, num_classes=self._vocab_size)
-    output = jnp.concatenate([one_hot_strings, one_hot_strings], axis=1)
-    return {"input": one_hot_strings, "output": output}
+    sorted_strings = jnp.sort(strings, axis=-1)
+
+    return {
+        'input': jnn.one_hot(strings, num_classes=self.input_size),
+        'output': jnn.one_hot(sorted_strings, num_classes=self.output_size),
+    }
 
   @property
   def input_size(self) -> int:
@@ -70,4 +75,4 @@ class DuplicateString(task.GeneralizationTask):
 
   def output_length(self, input_length: int) -> int:
     """Returns the output length for a given input length."""
-    return 2 * input_length
+    return input_length

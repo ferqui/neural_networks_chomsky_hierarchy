@@ -24,8 +24,8 @@ import numpy as np
 import tqdm
 import tree
 
-from neural_networks_chomsky_hierarchy.tasks import task
-from neural_networks_chomsky_hierarchy.tasks.dcf import modular_arithmetic_brackets as mab
+from chomsky.tasks import task
+from chomsky.tasks.dcf import modular_arithmetic_brackets as mab
 
 
 def generate_equation_and_solution(

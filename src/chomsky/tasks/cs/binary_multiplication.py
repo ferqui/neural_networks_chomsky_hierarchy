@@ -23,8 +23,8 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import numpy as np
 
-from neural_networks_chomsky_hierarchy.tasks import task
-from neural_networks_chomsky_hierarchy.tasks.cs import binary_addition
+from chomsky.tasks import task
+from chomsky.tasks.cs import binary_addition
 
 
 class BinaryMultiplication(task.GeneralizationTask):

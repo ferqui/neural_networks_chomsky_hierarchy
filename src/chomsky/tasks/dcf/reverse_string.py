@@ -20,8 +20,8 @@ import functools
 import jax
 import jax.numpy as jnp
 
-from neural_networks_chomsky_hierarchy.tasks import task
-from neural_networks_chomsky_hierarchy.tasks.cs import duplicate_string
+from chomsky.tasks import task
+from chomsky.tasks.cs import duplicate_string
 
 
 class ReverseString(duplicate_string.DuplicateString):

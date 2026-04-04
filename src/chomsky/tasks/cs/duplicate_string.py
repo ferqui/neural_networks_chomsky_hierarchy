@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Sort a string by the parity of the indices (odd indices first)."""
+"""Duplicate a string."""
 
 import functools
 
@@ -22,26 +22,26 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
-class OddsFirst(task.GeneralizationTask):
-  """A task with the goal of outputting a string's tokens at odd indices first.
+class DuplicateString(task.GeneralizationTask):
+  """A task with the goal of duplicating a string.
 
   The input is a string s_1 ... s_n composed of symbols from a finite set S. The
-  output is the same string, but where the values at odd indexes have been put
-  first: s_1 s_3 s_5 ... s_2 s_4 s_6 ...
+  output is the same string outputted twice without any separator, ie:
+  s_1 ... s_n s_1 ... s_n
 
   Examples:
-    00110101 -> 0100 0111
-    110 -> 10 1
+    101 -> 101 101
+    111111 -> 111111 111111
 
   In the paper, we use only binary strings (ie S = {0, 1}).
   Note that the sampling is jittable so this task is fast.
   """
 
   def __init__(self, vocab_size: int = 2) -> None:
-    """Initializes the odds_first task.
+    """Initializes the remember_string task.
 
     Args:
       vocab_size: The size of the alphabet. We use 2 in the paper.
@@ -51,24 +51,23 @@ class OddsFirst(task.GeneralizationTask):
   @functools.partial(jax.jit, static_argnums=(0, 2, 3))
   def sample_batch(self, rng: jnp.ndarray, batch_size: int,
                    length: int) -> task.Batch:
-    """Returns a batch of strings and their outputs."""
+    """Returns a batch of strings and their copies."""
     strings = jrandom.randint(
         rng, shape=(batch_size, length), minval=0, maxval=self._vocab_size)
     one_hot_strings = jnn.one_hot(strings, num_classes=self._vocab_size)
-    output = jnp.concatenate(
-        [one_hot_strings[:, 1::2], one_hot_strings[:, ::2]], axis=1)
+    output = jnp.concatenate([one_hot_strings, one_hot_strings], axis=1)
     return {"input": one_hot_strings, "output": output}
 
   @property
   def input_size(self) -> int:
-    """Returns the input size for the model."""
+    """Returns the input size for the models."""
     return self._vocab_size
 
   @property
   def output_size(self) -> int:
-    """Returns the output size for the model."""
+    """Returns the output size for the models."""
     return self._vocab_size
 
   def output_length(self, input_length: int) -> int:
-    """Returns the output length for the model."""
-    return input_length
+    """Returns the output length for a given input length."""
+    return 2 * input_length

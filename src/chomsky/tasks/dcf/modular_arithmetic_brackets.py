@@ -24,7 +24,7 @@ import numpy as np
 import tqdm
 import tree
 
-from neural_networks_chomsky_hierarchy.tasks import task
+from chomsky.tasks import task
 
 
 def generate_one_expression_and_result(

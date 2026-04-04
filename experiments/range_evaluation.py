@@ -20,9 +20,9 @@ import random
 from typing import Any, Callable, Mapping
 
 from absl import logging
-import haiku as hk
-import jax
+import equinox as eqx
 import jax.numpy as jnp
+import jax.random as jrandom
 import numpy as np
 import tqdm
 
@@ -33,8 +33,7 @@ _Batch = Mapping[str, jnp.ndarray]
 @dataclasses.dataclass
 class EvaluationParams:
   """The parameters used for range evaluation of networks."""
-  model: hk.Transformed
-  params: hk.Params
+  model: eqx.Module
 
   accuracy_fn: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
   sample_batch: Callable[[jnp.ndarray, int, int], _Batch]
@@ -60,39 +59,35 @@ def range_evaluation(
     The list of dicts containing the accuracies.
   """
   model = eval_params.model
-  params = eval_params.params
+  model = eqx.nn.inference_mode(model)
 
   random.seed(1)
   np.random.seed(1)
-  rng_seq = hk.PRNGSequence(1)
+  key = jrandom.key(1)
 
   if eval_params.is_autoregressive:
-    apply_fn = jax.jit(model.apply, static_argnames=('sample',))
+    model = eqx.filter_vmap(model, in_axes=(0, 0, None))
   else:
-    apply_fn = jax.jit(model.apply)
+    model = eqx.filter_vmap(model)
 
   results = []
   lengths = range(1, eval_params.max_test_length + 1)
   if use_tqdm:
     lengths = tqdm.tqdm(lengths)
   for length in lengths:
-    # We need to clear the cache of jitted functions, to avoid overflow as we
-    # are jitting len(lengths) ones, which can be a lot.
-    apply_fn.clear_cache()
     sub_accuracies = []
     for _ in range(eval_params.total_batch_size // eval_params.sub_batch_size):
+      key, sample_key = jrandom.split(key)
       batch = eval_params.sample_batch(
-          next(rng_seq), eval_params.sub_batch_size, length)
+          sample_key, eval_params.sub_batch_size, length)
 
       if eval_params.is_autoregressive:
-        outputs = apply_fn(
-            params,
-            next(rng_seq),
+        outputs = model(
             batch['input'],
             jnp.empty_like(batch['output']),
             sample=True)
       else:
-        outputs = apply_fn(params, next(rng_seq), batch['input'])
+        outputs = model(batch['input'])
 
       sub_accuracies.append(
           float(np.mean(eval_params.accuracy_fn(outputs, batch['output']))))
