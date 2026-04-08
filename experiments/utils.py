@@ -37,7 +37,7 @@ class ModelWithPadding(eqx.Module):
     computation_steps_mult: int = eqx.field(static=True)
     single_output: bool = eqx.field(static=True)
 
-    def __call__(self, x: chex.Array) -> chex.Array:
+    def __call__(self, x: chex.Array, key: chex.PRNGKey) -> chex.Array:
         input_length, input_size = x.shape
         output_length = self.generalization_task.output_length(input_length)
         extra_dims_onehot = 1 + int(self.computation_steps_mult > 0)
@@ -62,7 +62,7 @@ class ModelWithPadding(eqx.Module):
         output_tokens = jnn.one_hot(output_tokens, num_classes=final_input_size)
         final_input = jnp.concatenate([x, computation_tape, output_tokens], axis=0)
 
-        output = self.model(final_input)
+        output = self.model(final_input, key=key)
         output = output[-output_length:]
         if self.single_output:
             output = jnp.squeeze(output, axis=0)
@@ -100,7 +100,7 @@ class ModelWithTargetsInput(eqx.Module):
   model: eqx.Module
   computation_steps_mult: int = eqx.field(static=True)
 
-  def __call__(self, x: chex.Array, y: chex.Array) -> chex.Array:
+  def __call__(self, x: chex.Array, y: chex.Array, key: chex.PRNGKey) -> chex.Array:
     input_length, input_size = x.shape
     output_length, output_size = y.shape
     extra_dims_onehot = 1 + int(self.computation_steps_mult > 0)
@@ -135,9 +135,9 @@ class ModelWithTargetsInput(eqx.Module):
     )
 
     if 'input_length' in inspect.getfullargspec(self.model).args:
-      output = self.model(final_input, input_length=input_length)  # pytype: disable=wrong-keyword-args
+      output = self.model(final_input, input_length=input_length, key=key)  # pytype: disable=wrong-keyword-args
     else:
-      output = self.model(final_input)
+      output = self.model(final_input, key=key)
 
     return output[-output_length - 1 : -1]
 
@@ -163,7 +163,7 @@ class SamplingToAutoregressiveModel(eqx.Module):
   model: eqx.Module
   single_output: bool = eqx.field(static=True)
 
-  def __call__(self, x: chex.Array, y: chex.Array, sample: bool) -> chex.Array:
+  def __call__(self, x: chex.Array, y: chex.Array, key: chex.PRNGKey, sample: bool) -> chex.Array:
     """Returns an autoregressive model if `sample == True and output_size > 1`.
 
     Args:
@@ -175,7 +175,7 @@ class SamplingToAutoregressiveModel(eqx.Module):
     output_size = y.shape[-1]
 
     if not sample or output_length == 1:
-      output = self.model(x, y)
+      output = self.model(x, y, key)
     else:
 
       def evaluate_model_autoregressively(
@@ -197,7 +197,7 @@ class SamplingToAutoregressiveModel(eqx.Module):
             jnp.argmax(predictions, axis=-1),
             num_classes=output_size,
         )
-        logits = self.model(x, one_hot_predictions)
+        logits = self.model(x, one_hot_predictions, key=jax.random.fold_in(key, idx))
         return predictions.at[:, idx].set(logits[:, idx])
       
       output = jax.lax.fori_loop(

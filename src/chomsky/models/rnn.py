@@ -27,9 +27,6 @@ import jax
 
 class RNNCell(eqx.Module, abc.ABC):
 
-  @abc.abstractmethod
-  def step(self, x: chex.Array, state: Any, *, key=None) -> Tuple[chex.Array, Any]: ...
-
   @property
   @abc.abstractmethod
   def output_size(self) -> int: ...
@@ -45,8 +42,8 @@ class LSTM(eqx.nn.LSTMCell, RNNCell):
   def initial_state(self) -> Any:
     return (jnp.zeros((self.hidden_size,)), jnp.zeros((self.hidden_size,)))
   
-  def step(self, x: chex.Array, state: Any, *, key=None) -> Tuple[chex.Array, Any]:
-      (h, c) = self(x, state, key=key)
+  def __call__(self, x: chex.Array, state: Any, *, key=None) -> Tuple[chex.Array, Any]:
+      (h, c) = super().__call__(x, state, key=key)
       return h, (h, c)
 
 class VanillaRNN(RNNCell):
@@ -66,13 +63,9 @@ class VanillaRNN(RNNCell):
     def initial_state(self) -> Any:
        return jnp.zeros((self.hidden_size,))
 
-    def step(self, x: chex.Array, state: Any, *, key=None) -> Tuple[chex.Array, Any]:
-      carry = self(x, state, key=key)
-      return carry, carry
-
-    def __call__(self, x: chex.Array, state: Any, *, key=None) -> Any:
-        out = jax.nn.relu(self.input_to_hidden(x) + self.hidden_to_hidden(state))
-        return out, out
+    def __call__(self, x: chex.Array, state: Any, *, key=None) -> Tuple[chex.Array, Any]:
+      out = jax.nn.relu(self.input_to_hidden(x) + self.hidden_to_hidden(state))
+      return out, out
 
 class RNN(eqx.Module):
   input_size: int = eqx.field(static=True)
@@ -102,7 +95,7 @@ class RNN(eqx.Module):
     self.core = rnn_core(input_size=in_size, **rnn_kwargs, key=keys[0])
     self.output_lin = eqx.nn.Linear(self.core.output_size, output_size, key=keys[1])
 
-  def __call__(self, x: chex.Array, input_length: int = 1):
+  def __call__(self, x: chex.Array, input_length: int = 1, *, key):
     # if issubclass(rnn_core, tape_rnn.TapeRNNCore):
     #   initial_state = self.core.initial_state(input_length)  # pytype: disable=wrong-arg-count
     # else:
@@ -117,16 +110,14 @@ class RNN(eqx.Module):
     x = jnp.reshape(
         x,
         (new_seq_length // self.input_window, -1))
-        
-    # x = hk.Flatten(preserve_dims=1)(x)
-    # x = jnp.reshape(x, (new_seq_length // self.input_window, -1))
 
-    def scan_fn(state, x):
-      output, state = self.core.step(x, state)
-      return state, output
+    def scan_fn(carry, x):
+      state, key = carry
+      key, k2 = jrandom.split(key)
+      output, state = self.core(x, state, key=k2)
+      return (state, key), output
     
-    _, output = jax.lax.scan(scan_fn, initial_state, x)
-    # output = jnp.reshape(output, (new_seq_length, output.shape[-1]))
+    _, output = jax.lax.scan(scan_fn, (initial_state, key), x)
 
     output = jnn.relu(output)
     if not self.return_all_outputs:

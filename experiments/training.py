@@ -101,10 +101,11 @@ def _apply_loss_and_metrics_fn(
     accuracy, if accuracy_fn is not None.
   """
   model = eqx.combine(params, model_apply_fn)
+  keys = jax.random.split(rng_key, batch["input"].shape[0])
   if is_autoregressive:
-    outputs = eqx.filter_vmap(model, in_axes=(9, 0, None))(batch["input"], batch["output"], sample=False)
+    outputs = eqx.filter_vmap(model, in_axes=(0, 0, 0, None))(batch["input"], batch["output"], keys, False)
   else:
-    outputs = eqx.filter_vmap(model)(batch["input"])
+    outputs = eqx.filter_vmap(model)(batch["input"], keys)
 
   loss, loss_metrics = loss_fn(outputs, batch["output"])
   if accuracy_fn is not None:

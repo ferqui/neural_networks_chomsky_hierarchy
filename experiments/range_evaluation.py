@@ -66,7 +66,7 @@ def range_evaluation(
   key = jrandom.key(1)
 
   if eval_params.is_autoregressive:
-    model = eqx.filter_vmap(model, in_axes=(0, 0, None))
+    model = eqx.filter_vmap(model, in_axes=(0, 0, 0, None))
   else:
     model = eqx.filter_vmap(model)
 
@@ -77,17 +77,19 @@ def range_evaluation(
   for length in lengths:
     sub_accuracies = []
     for _ in range(eval_params.total_batch_size // eval_params.sub_batch_size):
-      key, sample_key = jrandom.split(key)
+      key, sample_key, model_key = jrandom.split(key, 3)
       batch = eval_params.sample_batch(
           sample_key, eval_params.sub_batch_size, length)
 
+      model_key = jrandom.split(model_key, batch['input'].shape[0])
       if eval_params.is_autoregressive:
         outputs = model(
             batch['input'],
             jnp.empty_like(batch['output']),
+            model_key,
             sample=True)
       else:
-        outputs = model(batch['input'])
+        outputs = model(batch['input'], model_key)
 
       sub_accuracies.append(
           float(np.mean(eval_params.accuracy_fn(outputs, batch['output']))))

@@ -18,11 +18,7 @@
 import functools
 
 import chomsky.curriculum as curriculum_lib
-# from chomsky.models import ndstack_rnn
 from chomsky.models import rnn
-# from chomsky.models import stack_rnn
-# from chomsky.models import tape_rnn
-# from chomsky.models import transformer
 from chomsky.tasks.cs import binary_addition
 from chomsky.tasks.cs import binary_multiplication
 from chomsky.tasks.cs import bucket_sort
@@ -44,29 +40,7 @@ MODEL_BUILDERS = {
     'rnn':
         functools.partial(rnn.make_rnn, rnn_core=rnn.VanillaRNN),
     'lstm':
-        functools.partial(rnn.make_rnn, rnn_core=rnn.LSTM),
-#     'stack_rnn':
-#         functools.partial(
-#             rnn.make_rnn,
-#             rnn_core=stack_rnn.StackRNNCore,
-#             inner_core=hk.VanillaRNN),
-#     'ndstack_rnn':
-#         functools.partial(
-#             rnn.make_rnn,
-#             rnn_core=ndstack_rnn.NDStackRNNCore,
-#             inner_core=hk.VanillaRNN),
-#     'stack_lstm':
-#         functools.partial(
-#             rnn.make_rnn, rnn_core=stack_rnn.StackRNNCore, inner_core=hk.LSTM),
-#     'transformer_encoder':
-#         transformer.make_transformer_encoder,
-#     'transformer':
-#         transformer.make_transformer,
-#     'tape_rnn':
-#         functools.partial(
-#             rnn.make_rnn,
-#             rnn_core=tape_rnn.TapeInputLengthJumpCore,
-#             inner_core=hk.VanillaRNN),
+        functools.partial(rnn.make_rnn, rnn_core=rnn.LSTM)
 }
 
 CURRICULUM_BUILDERS = {

@@ -73,9 +73,6 @@ _COMPUTATION_STEPS_MULT = flags.DEFINE_integer(
 # them as via flags. See `constants.py` for the required values.
 _ARCHITECTURE_PARAMS = {
     'hidden_size': 256,
-    # "input_window": 5,
-    # 'memory_cell_size': 8,
-    # 'memory_size': 40,
 }
 
 
@@ -133,7 +130,7 @@ def main(unused_argv) -> None:
   # Create the final training parameters.
   training_params = training.ClassicTrainingParams(
       seed=_SEED.value + 1,
-      training_steps=10_000,
+      training_steps=1000,
       log_frequency=100,
       length_curriculum=curriculum,
       batch_size=_BATCH_SIZE.value,
